@@ -2238,37 +2238,43 @@ NAN_METHOD(GitRepo::Clone) {
     return NanThrowError(String::New("String local_path is required."));
   }
 
-  if (args.Length() == 3 || !args[3]->IsFunction()) {
-    return NanThrowError(String::New("Callback is required and must be a Function."));
-  }
-
-  CloneBaton* baton = new CloneBaton;
-  baton->error_code = GIT_OK;
-  baton->error = NULL;
-  baton->request.data = baton;
-  NanAssignPersistent(Value, baton->urlReference, args[0]);
+  git_repository * out = 0;
   const char * from_url;
-  String::Utf8Value url(args[0]->ToString());
-  from_url = strdup(*url);
-  baton->url = from_url;
-  NanAssignPersistent(Value, baton->local_pathReference, args[1]);
-  const char * from_local_path;
-  String::Utf8Value local_path(args[1]->ToString());
-  from_local_path = strdup(*local_path);
-  baton->local_path = from_local_path;
-  NanAssignPersistent(Value, baton->optionsReference, args[2]);
-  const git_clone_options * from_options;
-  if (args[2]->IsObject()) {
-    from_options = ObjectWrap::Unwrap<GitCloneOptions>(args[2]->ToObject())->GetValue();
-  } else {
-    from_options = 0;
+            String::Utf8Value url(args[0]->ToString());
+      from_url = strdup(*url);
+        const char * from_local_path;
+            String::Utf8Value local_path(args[1]->ToString());
+      from_local_path = strdup(*local_path);
+        const git_clone_options * from_options;
+      if (args[2]->IsObject()) {
+            from_options = ObjectWrap::Unwrap<GitCloneOptions>(args[2]->ToObject())->GetValue();
+          } else {
+      from_options = 0;
+    }
+  
+  int result = git_clone(
+    &out
+    , from_url
+    , from_local_path
+    , from_options
+  );
+  free((void *)from_url);
+  free((void *)from_local_path);
+	if (result != GIT_OK) {
+    if (giterr_last()) {
+      return NanThrowError(String::New(giterr_last()->message));
+    } else {
+      return NanThrowError(String::New("Unkown Error"));
+    }
   }
-  baton->options = from_options;
-  NanAssignPersistent(Function, baton->callback, Local<Function>::Cast(args[3]));
 
-  uv_queue_work(uv_default_loop(), &baton->request, CloneWork, (uv_after_work_cb)CloneAfterWork);
-
-  NanReturnUndefined();
+  Handle<Value> to;
+    if (out != NULL) {
+    to = GitRepo::New((void *)out);
+  } else {
+    to = Null();
+		}
+		NanReturnValue(to);
 }
 
 void GitRepo::CloneWork(uv_work_t *req) {
